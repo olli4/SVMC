@@ -445,6 +445,8 @@ contains
                                                       ! Defaults to FALSE (C3 photoynthesis temperature resposne following
                                                       ! Bernacchi et al., 2003 is used
 
+    ! PORT-BRANCH: phydro.ftemp_kphio.c4_select
+    ! Condition: c4=.TRUE. -> C4 polynomial; c4=.FALSE. -> C3 polynomial (Bernacchi 2003)
     if (c4) then
       ! correcting erroneous values provided in Cai & Prentice, 2020, according to D. Orme (issue #19) 
       ! XXX THIS IS NOT CORRECT: ftemp = -0.008 + 0.00375 * tc - 0.58e-4 * tc**2   # Based on calibrated values by Shirley
@@ -455,6 +457,8 @@ contains
     
     end if
   
+    ! PORT-BRANCH: phydro.ftemp_kphio.negative_clamp
+    ! Condition: ftemp_kphio < 0 -> clamp result to 0 (no negative quantum yield)
     ! Avoid negative values
     if (ftemp_kphio<0.0) then
       ftemp_kphio=0.0
@@ -759,16 +763,26 @@ contains
      !end if
 
      root = b*b - 4.0*a*c
+     ! PORT-BRANCH: phydro.quadratic.negative_discriminant
+     ! Condition: root < 0 -> check if near-zero (clamp) or truly negative (early return)
      if ( root < 0.0 )then
+        ! PORT-BRANCH: phydro.quadratic.near_zero_discriminant
+        ! Condition: -root < 3*epsilon(b) -> clamp discriminant to 0 (numerical tolerance)
         if ( -root < 3.00*epsilon(b) )then
            root = 0.00
         else
+           ! PORT-BRANCH: phydro.quadratic.impossible_discriminant
+           ! Condition: discriminant too negative -> early return with r1 UNINITIALIZED
            !print *, "error 2"
            return
         end if
      end if
    
+    ! PORT-BRANCH: phydro.quadratic.linear_fallback
+    ! Condition: a == 0 -> degenerate to linear or constant equation
     if (a == 0.0) then
+      ! PORT-BRANCH: phydro.quadratic.zero_ab
+      ! Condition: a == 0 AND b == 0 -> trivially r1 = 0
       if (b == 0.0) then
         r1 = 0.0
 !        print *, "quadratic solution1"
@@ -831,6 +845,8 @@ contains
   
     !print *, "costs=", par_cost%alpha, par_cost%gamma, jmax, dpsi
     !print *, "aj=", aj, costs, dummy_costs, opt_hypothesis, do_optim
+    ! PORT-BRANCH: phydro.fn_profit.hypothesis_select
+    ! Condition: opt_hypothesis == "PM" -> Profit Maximisation; "LC" -> Least Cost
     if (opt_hypothesis == "PM") then
       ! Profit Maximisation
       fn_profit = aj*benefit - costs - dummy_costs
@@ -839,6 +855,8 @@ contains
       fn_profit = -(costs+dummy_costs) / (aj+1e-4)
     end if
   
+    ! PORT-BRANCH: phydro.fn_profit.optim_negate
+    ! Condition: do_optim=.TRUE. -> negate result (minimizer needs negative of profit)
     if (do_optim) then
       !print *, "doing optimization", do_optim
       fn_profit= -fn_profit

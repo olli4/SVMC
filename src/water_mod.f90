@@ -211,6 +211,8 @@ contains
     watres = spafhy_para%watres
     
     vol_ice = 0.0  
+    ! PORT-BRANCH: water.soil_retention.porosity_floor
+    ! Condition: watsat - vol_ice < 0.01 -> clamp effective porosity to 0.01
     eff_porosity = max(0.01, watsat - vol_ice)
     
     satfrac = (vol_liq-watres)/(eff_porosity-watres)
@@ -244,6 +246,8 @@ contains
     watsat = spafhy_para%watsat  
     watres = spafhy_para%watres 
     vol_ice = 0.0  
+    ! PORT-BRANCH: water.soil_conductivity.porosity_floor
+    ! Condition: watsat - vol_ice < 0.01 -> clamp effective porosity to 0.01
     eff_porosity = max(0.01, watsat - vol_ice)
 
     satfrac = (vol_liq - watres) / (eff_porosity-watres)
@@ -514,6 +518,8 @@ contains
     real(8) :: eps = 1e-16
 
     zm1 = spafhy_para%hc + spafhy_para%zmeas  ! m
+    ! PORT-BRANCH: water.aerodynamics.ground_height_cap
+    ! Condition: zground > 0.1*hc -> cap ground height at 10% of canopy
     zg1 = min(spafhy_para%zground, 0.1 * spafhy_para%hc)
     alpha1 = LAI / 2.0  ! wind attenuation coeff (Yi, 2008 eq. 23)
     d = 0.66*spafhy_para%hc     ! displacement height [m]
@@ -526,6 +532,8 @@ contains
     Uh = ustar / kv * log((spafhy_para%hc - d) / zom)
     
     ! U(zg) from exponential wind profile
+    ! PORT-BRANCH: water.aerodynamics.zn_cap
+    ! Condition: zg1/hc > 1.0 -> cap normalized ground height at 1.0 (can't exceed canopy top)
     zn = min(zg1 / spafhy_para%hc, 1.0)  ! zground can't be above canopy top
     Ug = Uh * exp(alpha1*(zn - 1.0))
 
@@ -533,6 +541,8 @@ contains
     !ra = 1. / (kv*ustar) * log((zm - d) / zom)
     ra = 1./(kv**2.0 * Uo) * log((zm1-d)/zom) * log((zm1-d)/zov)   
 
+    ! PORT-BRANCH: water.aerodynamics.rb_lai_guard
+    ! Condition: LAI <= eps -> boundary-layer resistance forced to 0 (avoid div-by-zero)
     if (LAI > eps) then 
       rb = 1./LAI * beta_aero * ((spafhy_para%w_leaf / Uh)*(alpha1/(1.0-exp(-alpha1/2.0))))**0.5
     else
@@ -592,6 +602,8 @@ contains
     !   penman_monteith = penman_monteith/L/Mw  ! mol m-2 s-1
     ! end if
 
+    ! PORT-BRANCH: water.penman_monteith.le_floor
+    ! Condition: result < 0 -> clamp latent heat flux to 0 (no negative LE)
     penman_monteith = max(penman_monteith, 0.0)
 
     return

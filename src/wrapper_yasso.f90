@@ -266,11 +266,15 @@ subroutine readsoilyasso_namelist(yasso_para)
     ! local variables
     real           :: alpha_smooth1=0.01, alpha_smooth2=0.0016
 
+    ! PORT-BRANCH: yasso.exponential_smooth_met.invalid_ind_guard
+    ! Condition: met_ind < 1 -> fatal error (invalid counter state)
     if (met_ind < 1 ) then
        print *, 'something wrong with met_ind: ', met_ind
        error stop
     end if
     
+    ! PORT-BRANCH: yasso.exponential_smooth_met.init_vs_smooth
+    ! Condition: met_ind == 1 -> initialize rolling from daily; else -> exponential smoothing
     if (met_ind == 1) then
        ! For the first aver_size days average as many values as have been input.
        met_rolling(:) = met_daily(:)
