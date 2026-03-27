@@ -322,6 +322,8 @@ contains
     ! maximum equals available water 
     canopywater_flux%SoilEvap = min(soilwater_state%WatSto, erate)
 
+    ! PORT-BRANCH: water.ground_evaporation.snow_floor_zero
+    ! Condition: SWE > eps -> no evaporation from floor if snow on ground
     if (canopywater_state%SWE > eps) then
       canopywater_flux%SoilEvap = 0.0  ! no evaporation from floor if snow on ground
     end if
@@ -360,6 +362,8 @@ contains
     Tmelt = 0.0  ! 'C, T when melting starts
 
     ! state of precipitation [as water (fW) or as snow(fS)]
+    ! PORT-BRANCH: water.canopy_water_snow.precip_phase
+    ! Condition: T<=Tmin -> all snow; T>=Tmax -> all rain; between -> mixed
     if (T <= Tmin) then
       fS = 1.0
       fW = 0.0
@@ -397,13 +401,17 @@ contains
     ! resistance for snow sublimation adopted from:
     ! Pomeroy et al. 1998 Hydrol proc; Essery et al. 2003 J. Climate;
     ! Best et al. 2011 Geosci. Mod. Dev.
-   
+
+    ! PORT-BRANCH: water.canopy_water_snow.lai_evap_guard
+    ! Condition: LAI <= eps -> no canopy evaporation/sublimation
     if ( LAI > eps ) then
       Ce = 0.01*((W + eps) / wmaxsnow_tot)**(-0.4)  ! exposure coeff (-)
       Sh = (1.79 + 3.0*U**0.5)                      ! Sherwood numbner (-)
       gi = Sh*W*Ce / 7.68 + eps                ! m s-1
 
       erate=0.0
+      ! PORT-BRANCH: water.canopy_water_snow.sublim_vs_evap
+      ! Condition: Prec==0 & T<=Tmin -> sublimation; Prec==0 & T>Tmin -> evaporation
       if ((Prec == 0) .and. (T <= Tmin)) then
       ! sublimation
         erate =  (time_step * 3600) / Ls * penman_monteith(AE, D, T, gi, Ga, P) ! mm in timestep    
@@ -416,6 +424,8 @@ contains
       erate=0.0
     end if
 
+    ! PORT-BRANCH: water.canopy_water_snow.snow_unloading
+    ! Condition: T >= Tmin -> unload excess beyond wmax_tot
     if (T >= Tmin) then
       ! snow unloading from canopy, ensures also that seasonal LAI development does not mess up computations
       Unload = max(W - wmax_tot, 0.0)
@@ -425,6 +435,8 @@ contains
     !----- Interception of rain or snow: asymptotic approach of saturation.
     !      based on: Hedstrom & Pomeroy 1998. Hydrol. Proc 12, 1611-1625;
     !                Koivusalo & Kokkonen 2002 J.Hydrol. 262, 145-164.
+    ! PORT-BRANCH: water.canopy_water_snow.interception_phase
+    ! Condition: T < Tmin -> snow interception capacity; else -> liquid capacity
     if (T < Tmin) then
       if (LAI > eps) then
         Interc = (wmaxsnow_tot - W) * (1.0 - exp(-Prec/wmaxsnow_tot))
@@ -447,6 +459,8 @@ contains
     Trfall = Prec + Unload - Interc
 
     !---- Snowpack (in case no snow, all Trfall routed to floor) """
+    ! PORT-BRANCH: water.canopy_water_snow.melt_freeze
+    ! Condition: T>=Tmelt -> melt ice; T<Tmelt & swe_l>0 -> freeze liquid; else -> no phase change
     if (T >= Tmelt) then ! .AND. swe_i > 0) then
       Melt = min(swe_i, spafhy_para%kmelt * (time_step*3600) * (T - Tmelt))  ! mm
       Freeze = 0.0
