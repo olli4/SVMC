@@ -291,11 +291,15 @@ contains
     
     ! Nitrogen
     !
+    ! PORT-BRANCH: yasso.decompose.totc_threshold
+    ! Condition: totc < 1e-6 -> skip nitrogen dynamics and set ntend = 0.0; else -> compute full nitrogen update.
     if (totc < 1e-6) then
        ! No SOM, no need for N dynamics
        ntend = 0.0
     else
        decomp_h = matrix(5,5) * cstate(5) * timestep_yr
+       ! PORT-BRANCH: yasso.decompose.nc_h_unusual
+       ! Condition: cstate(5) * nc_h_max > nstate -> use nc_h = nstate / totc; else -> use nc_h = nc_h_max.
        if (cstate(5) * nc_h_max > nstate) then
           ! This should require very unusual inputs or parameters. Handle it nevertheless:
           nc_h = nstate / totc
@@ -305,6 +309,10 @@ contains
        nitr_awen = nstate - cstate(5) * nc_h
        nc_awen = nitr_awen / (totc - cstate(5) + 1e-9)
        nc_som = nstate / totc
+       ! PORT-BRANCH: yasso.decompose.cue_upper_cap
+       ! Condition: 0.43 * (nc_som / nc_mb) ** 0.6 > 1.0 -> cap the raw CUE at 1.0; else -> leave the raw value unchanged.
+       ! PORT-BRANCH: yasso.decompose.cue_lower_floor
+       ! Condition: min(raw_cue, 1.0) < cue_min -> floor CUE at cue_min; else -> leave the capped value unchanged.
        cue = max(min(0.43 * (nc_som / nc_mb) ** 0.6, 1.0), cue_min)
        ! resp_from_awen = uptake_from_awen * (1 - CUE), and thus: 
        cupt_awen = (resp - decomp_h) / (1.0 - cue)
