@@ -176,6 +176,10 @@ contains
        nc_awen = (1.0 / cupt_awen) * (nc_mb * cue * cupt_awen - nc_h_max*decomp_h + nitr_input_yr)
        nstate = sum(cstate(1:4)) * nc_awen + nc_h_max * cstate(5)
        nc_som = nstate / sum(cstate)
+       ! PORT-BRANCH: yasso.eval_steadystate_nitr.cue_upper_cap
+       ! Condition: 0.43 * (nc_som / nc_mb) ** 0.6 > 1.0 -> cap at 1.0; else -> leave unchanged.
+       ! PORT-BRANCH: yasso.eval_steadystate_nitr.cue_lower_floor
+       ! Condition: min(raw_cue, 1.0) < cue_min -> floor at cue_min; else -> leave unchanged.
        cue = max(min(0.43 * (nc_som / nc_mb) ** 0.6, 1.0), cue_min)
     end do
     
@@ -209,10 +213,14 @@ contains
     real :: eqnitr
     
     call evaluate_matrix_mean_tempr(param, tempr_c, precip_day * days_yr,tempr_ampl, matrix)
+    ! PORT-BRANCH: yasso.initialize_totc.fract_root_input_guard
+    ! Condition: fract_root_input < 0 or > 1 -> error stop (fatal).
     if (fract_root_input < 0.0 .or. fract_root_input > 1) then
        print *, 'Bad fract_root_input:', fract_root_input
        error stop
     end if
+    ! PORT-BRANCH: yasso.initialize_totc.fract_legacy_soc_guard
+    ! Condition: fract_legacy_soc < 0 or > 1 -> error stop (fatal).
     if (fract_legacy_soc < 0.0 .or. fract_legacy_soc > 1) then
        print *, 'Bad fract_legacy_soc:', fract_legacy_soc
        error stop
