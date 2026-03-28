@@ -166,6 +166,8 @@ contains
       real(8) :: gr_resp_leaf, gr_resp_stem, gr_resp_root, gr_resp_grain      ! growth respiration, kg C m-2 s-1 
 
 
+      ! PORT-BRANCH: allocation.alloc_hypothesis_2.pheno_growth
+      ! Condition: pheno_stage == 1 -> growth phase with allocation & turnover
       if (pheno_stage .eq. 1) then    ! phenology more critic for cereal, sow, emergence, maturity, flower, grainfill
                                       ! temperature dependence can be good ...
                                       ! storage carbon pool?
@@ -179,9 +181,13 @@ contains
                                   - cstem * (alloc_para%cratio_resp * alloc_para%q10 ** ((temp_day - 20)/10)))*3600*24,0.0)*0.11
          gr_resp_root=max((gpp_day * alloc_para%cratio_root - grain_fill  &
                                   - croot * (alloc_para%cratio_resp * alloc_para%q10 ** ((temp_day - 20)/10)))*3600*24,0.0)*0.11
+         ! PORT-BRANCH: allocation.alloc_hypothesis_2.grain_resp_oat
+         ! Condition: pft_type=="oat" -> nonzero grain growth respiration
          if (pft_type=="oat") then
             gr_resp_grain=max((grain_fill - cgrain*(0.1*alloc_para%cratio_resp * alloc_para%q10 ** ((temp_day - 20)/10)))*3600*24, &
                               0.0)*0.11
+         ! PORT-BRANCH: allocation.alloc_hypothesis_2.grain_resp_zero
+         ! Condition: pft_type!="oat" -> grain respiration forced to zero
          else
             gr_resp_grain=0.0 
          end if        
@@ -197,6 +203,8 @@ contains
                             + gr_resp_root &
                             + gr_resp_grain
 
+         ! PORT-BRANCH: allocation.alloc_hypothesis_2.litter_from_turnover
+         ! Condition: invert_option==0 -> compute litter_cleaf from leaf turnover
          if (alloc_para%invert_option .eq. 0) then
            litter_cleaf=cleaf * alloc_para%turnover_cleaf * alloc_para%q10 ** ((temp_day  - 20)/10)
          end if
@@ -204,6 +212,8 @@ contains
          litter_croot=croot * alloc_para%turnover_croot * alloc_para%q10 ** ((temp_day  - 20)/10)
          compost=0.0
          
+         ! PORT-BRANCH: allocation.alloc_hypothesis_2.cleaf_from_alloc
+         ! Condition: invert_option==0 -> update cleaf from carbon allocation
          if (alloc_para%invert_option .eq. 0) then
             cleaf   = cleaf + gpp_day * alloc_para%cratio_leaf * 3600 * 24  - litter_cleaf - leaf_rdark_day*3600*24 - gr_resp_leaf
          end if
@@ -217,22 +227,34 @@ contains
                      - croot * (alloc_para%cratio_resp * alloc_para%q10 ** ((temp_day - 20)/10))*3600*24 &
                      - gr_resp_root)
          
+         ! PORT-BRANCH: allocation.alloc_hypothesis_2.cgrain_update_oat
+         ! Condition: pft_type=="oat" -> update grain carbon pool
          if (pft_type=="oat") then
              cgrain  = cgrain + grain_fill*3600*24  &
                      - cgrain * (0.1*alloc_para%cratio_resp * alloc_para%q10 ** ((temp_day - 20)/10))*3600*24 &
                      - gr_resp_grain
+         ! PORT-BRANCH: allocation.alloc_hypothesis_2.cgrain_zero
+         ! Condition: pft_type!="oat" -> grain carbon forced to zero
          else
             cgrain=0.0
          end if
          !end if
 
+         ! PORT-BRANCH: allocation.alloc_hypothesis_2.harvest
+         ! Condition: management_type==1 -> harvest event
          if (manage_data%management_type .eq. 1) then    ! harvesting,  grass is special....        
+            ! PORT-BRANCH: allocation.alloc_hypothesis_2.harvest_grass
+            ! Condition: pft_type=="grass" -> harvest grass (reduce leaf+stem proportionally)
             if (pft_type=="grass") then 
+               ! PORT-BRANCH: allocation.alloc_hypothesis_2.harvest_grass_inv
+               ! Condition: invert_option==0 -> reduce cleaf during harvest
                if (alloc_para%invert_option .eq. 0) then    
                   cleaf = cleaf - manage_data%management_c_output*3600*24*cleaf/(cleaf+cstem)
                end if
                cstem = cstem - manage_data%management_c_output*3600*24*cstem/(cleaf+cstem)
                ! no litter input to soil for perennial forage grass, the plant parts remain alive.  
+            ! PORT-BRANCH: allocation.alloc_hypothesis_2.harvest_oat
+            ! Condition: pft_type=="oat" -> harvest oat (reset all carbon pools)
             else if (pft_type=="oat") then
                ! For cereal crop, the harvest yield is for grain carbon pool, which is separated from root (not leaf) in the model.  
                !if (alloc_para%invert_option .eq. 1) then 
@@ -251,13 +273,19 @@ contains
                !end if
             end if
 
+         ! PORT-BRANCH: allocation.alloc_hypothesis_2.grazing
+         ! Condition: management_type==3 -> grazing event
          else if (manage_data%management_type .eq. 3) then    ! grazing
+            ! PORT-BRANCH: allocation.alloc_hypothesis_2.grazing_inv
+            ! Condition: invert_option==0 -> reduce cleaf during grazing
             if (alloc_para%invert_option .eq. 0) then
               cleaf = cleaf - manage_data%management_c_output*3600*24*cleaf/(cleaf+cstem)
             end if
             cstem = cstem - manage_data%management_c_output*3600*24*cstem/(cleaf+cstem)
             ! manure input from animal dung or urine.
             compost= manage_data%management_c_input*3600*24
+         ! PORT-BRANCH: allocation.alloc_hypothesis_2.organic
+         ! Condition: management_type==4 -> organic material input
          else if (manage_data%management_type .eq. 4) then    ! organic materials
             compost= manage_data%management_c_input*3600*24
             !litter_cleaf = litter_cleaf+manage_data%management_c_input*3600*24
@@ -265,6 +293,8 @@ contains
                                                
          litter_cleaf= litter_cleaf + litter_cstem            ! combine leaf and stem together
       
+      ! PORT-BRANCH: allocation.alloc_hypothesis_2.pheno_dormancy
+      ! Condition: pheno_stage==2 -> dormancy: dump all living biomass to litter
       else if (pheno_stage .eq. 2) then
          ! needed only for dynamic LAI?
          ! Build a grain C pool here.                   
@@ -313,6 +343,8 @@ contains
       real(8) :: delta_cleaf      ! change of leaf carbon storage required for lai changes.
       real(8) :: gr_resp_leaf     ! growth respiration of leaf.
 
+      ! PORT-BRANCH: allocation.invert_alloc.active
+      ! Condition: pheno_stage==1 -> inversion active
       if ( pheno_stage .eq. 1) then
 
          delta_cleaf = delta_lai/alloc_para%sla * alloc_para%cratio_biomass
@@ -321,27 +353,45 @@ contains
          gr_resp_leaf=max(0.0, (gpp_day * alloc_para%cratio_leaf - leaf_rdark_day)*3600*24)*0.11
 
          ! Need to consider the managment here?
+         ! PORT-BRANCH: allocation.invert_alloc.option1
+         ! Condition: invert_option==1 -> derive cratio_leaf from LAI change
          if (alloc_para%invert_option .eq. 1) then
             litter_cleaf = cleaf * alloc_para%turnover_cleaf * alloc_para%q10 ** ((temp_day  - 20)/10)
+            ! PORT-BRANCH: allocation.invert_alloc.option1_gpp_above
+            ! Condition: gpp_day > 0.2e-8 -> sufficient GPP for cratio_leaf inversion
             if (gpp_day .gt. 0.2e-8) then
+               ! PORT-BRANCH: allocation.invert_alloc.option1_harvest
+               ! Condition: management_type==1 -> harvest in option 1
                if (manage_data%management_type .eq. 1) then    ! harvesting,  grass is special....  
+                  ! PORT-BRANCH: allocation.invert_alloc.option1_harvest_grass
+                  ! Condition: pft_type=="grass" -> harvest grass adds management_c_output term
                   if (pft_type=="grass") then
                      alloc_para%cratio_leaf = (delta_cleaf + litter_cleaf + leaf_rdark_day * 3600*24 + gr_resp_leaf & 
                           + manage_data%management_c_output*3600*24*cleaf/(cleaf+cstem))/3600/24/gpp_day
+                  ! PORT-BRANCH: allocation.invert_alloc.option1_harvest_other
+                  ! Condition: pft_type!="grass" -> harvest non-grass (no management_c_output term)
                   else
                      alloc_para%cratio_leaf = (delta_cleaf + litter_cleaf + leaf_rdark_day * 3600*24 + gr_resp_leaf &
                            )/3600/24/gpp_day
                   end if
 
+               ! PORT-BRANCH: allocation.invert_alloc.option1_grazing
+               ! Condition: management_type==3 -> grazing in option 1
                else if (manage_data%management_type .eq. 3) then    ! grazing
+                  ! PORT-BRANCH: allocation.invert_alloc.option1_grazing_grass
+                  ! Condition: pft_type=="grass" -> grazing grass adds management_c_output term
                   if (pft_type=="grass") then
                      alloc_para%cratio_leaf = (delta_cleaf + litter_cleaf + leaf_rdark_day*3600*24 + gr_resp_leaf & 
                         + manage_data%management_c_output*3600*24*cleaf/(cleaf+cstem))/3600/24/gpp_day
+                  ! PORT-BRANCH: allocation.invert_alloc.option1_grazing_other
+                  ! Condition: pft_type!="grass" -> grazing non-grass (no management_c_output term)
                   else
                      alloc_para%cratio_leaf = (delta_cleaf + litter_cleaf + leaf_rdark_day*3600*24 + gr_resp_leaf &  
                           )/3600/24/gpp_day
                   end if 
 
+               ! PORT-BRANCH: allocation.invert_alloc.option1_no_mgmt
+               ! Condition: management_type not 1 or 3 -> no management adjustment
                else
                   alloc_para%cratio_leaf = (delta_cleaf + litter_cleaf + leaf_rdark_day*3600*24 + gr_resp_leaf)/3600/24/gpp_day
                end if           
@@ -351,36 +401,56 @@ contains
             end if
             cleaf=max(0.0, cleaf + delta_cleaf)
 
+         ! PORT-BRANCH: allocation.invert_alloc.option2
+         ! Condition: invert_option==2 -> derive turnover_cleaf from LAI change
          else if (alloc_para%invert_option .eq. 2) then
+            ! PORT-BRANCH: allocation.invert_alloc.option2_cleaf_above
+            ! Condition: cleaf > 0.00001 -> sufficient leaf carbon for turnover derivation
             if (cleaf .gt. 0.00001) then
+               ! PORT-BRANCH: allocation.invert_alloc.option2_harvest
+               ! Condition: management_type==1 -> harvest in option 2
                if (manage_data%management_type .eq. 1) then   ! harvesting,  grass is special.... 
+                  ! PORT-BRANCH: allocation.invert_alloc.option2_harvest_grass
+                  ! Condition: pft_type=="grass" -> harvest grass subtracts management_c_output
                   if (pft_type=="grass") then
                      alloc_para%turnover_cleaf = (gpp_day * alloc_para%cratio_leaf * 3600 * 24 - delta_cleaf - &
                            manage_data%management_c_output*3600*24*cleaf/(cleaf+cstem) - leaf_rdark_day*3600*24 - gr_resp_leaf)/ &
                               cleaf/(alloc_para%q10 ** ((temp_day  - 20)/10))
+                  ! PORT-BRANCH: allocation.invert_alloc.option2_harvest_other
+                  ! Condition: pft_type!="grass" -> harvest non-grass (no management_c_output term)
                   else
                      alloc_para%turnover_cleaf = (gpp_day * alloc_para%cratio_leaf * 3600 * 24 - delta_cleaf - &
                            leaf_rdark_day*3600*24 - gr_resp_leaf)/ &
                               cleaf/(alloc_para%q10 ** ((temp_day  - 20)/10))
                   end if
 
+               ! PORT-BRANCH: allocation.invert_alloc.option2_grazing
+               ! Condition: management_type==3 -> grazing in option 2
                else if (manage_data%management_type .eq. 3) then    ! grazing
+                  ! PORT-BRANCH: allocation.invert_alloc.option2_grazing_grass
+                  ! Condition: pft_type=="grass" -> grazing grass subtracts management_c_output
                   if (pft_type=="grass") then
                       alloc_para%turnover_cleaf = (gpp_day * alloc_para%cratio_leaf * 3600 * 24 - delta_cleaf - &
                         manage_data%management_c_output*3600*24*cleaf/(cleaf+cstem) - leaf_rdark_day*3600*24 - gr_resp_leaf)/ &
                            cleaf/(alloc_para%q10 ** ((temp_day  - 20)/10))
+                  ! PORT-BRANCH: allocation.invert_alloc.option2_grazing_other
+                  ! Condition: pft_type!="grass" -> grazing non-grass (no management_c_output term)
                   else
                       alloc_para%turnover_cleaf = (gpp_day * alloc_para%cratio_leaf * 3600 * 24 - delta_cleaf - &
                            leaf_rdark_day*3600*24 - gr_resp_leaf)/ &
                               cleaf/(alloc_para%q10 ** ((temp_day  - 20)/10))
                   end if
 
+               ! PORT-BRANCH: allocation.invert_alloc.option2_no_mgmt
+               ! Condition: management_type not 1 or 3 -> no management adjustment
                else
                   alloc_para%turnover_cleaf = (gpp_day * alloc_para%cratio_leaf * 3600 * 24 - delta_cleaf - &
                          leaf_rdark_day*3600*24 - gr_resp_leaf)/ &
                            cleaf/(alloc_para%q10 ** ((temp_day  - 20)/10))
                end if
 
+            ! PORT-BRANCH: allocation.invert_alloc.option2_cleaf_below
+            ! Condition: cleaf <= 0.00001 -> insufficient leaf carbon, force cleaf=0
             else
                cleaf=0.0
             end if         
